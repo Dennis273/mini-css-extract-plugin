@@ -1,12 +1,6 @@
 import path from 'path';
 
 import loaderUtils from 'loader-utils';
-import NodeTemplatePlugin from 'webpack/lib/node/NodeTemplatePlugin';
-import NodeTargetPlugin from 'webpack/lib/node/NodeTargetPlugin';
-import LibraryTemplatePlugin from 'webpack/lib/LibraryTemplatePlugin';
-import SingleEntryPlugin from 'webpack/lib/SingleEntryPlugin';
-import LimitChunkCountPlugin from 'webpack/lib/optimize/LimitChunkCountPlugin';
-import NormalModule from 'webpack/lib/NormalModule';
 import { validate } from 'schema-utils';
 
 import CssDependency from './CssDependency';
@@ -37,6 +31,15 @@ function hotLoader(content, context) {
 }
 
 export function pitch(request) {
+  const {
+    LibraryTemplatePlugin,
+    node,
+    NormalModule,
+    optimize,
+    SingleEntryPlugin,
+  } = this._compiler.webpack;
+  const { NodeTargetPlugin, NodeTemplatePlugin } = node;
+  const { LimitChunkCountPlugin } = optimize;
   const options = loaderUtils.getOptions(this) || {};
 
   validate(schema, options, {
@@ -74,14 +77,16 @@ export function pitch(request) {
   );
   new LimitChunkCountPlugin({ maxChunks: 1 }).apply(childCompiler);
 
+  const isWebpack4 = childCompiler.webpack
+    ? false
+    : typeof childCompiler.resolvers !== 'undefined';
+
   childCompiler.hooks.thisCompilation.tap(
     `${pluginName} loader`,
     (compilation) => {
-      const normalModuleHook =
-        typeof NormalModule.getCompilationHooks !== 'undefined'
-          ? NormalModule.getCompilationHooks(compilation).loader
-          : compilation.hooks.normalModuleLoader;
-
+      const normalModuleHook = isWebpack4
+        ? compilation.hooks.normalModuleHook
+        : NormalModule.getCompilationHooks(compilation).loader;
       normalModuleHook.tap(`${pluginName} loader`, (loaderContext, module) => {
         if (module.request === request) {
           // eslint-disable-next-line no-param-reassign
@@ -98,10 +103,6 @@ export function pitch(request) {
   );
 
   let source;
-
-  const isWebpack4 = childCompiler.webpack
-    ? false
-    : typeof childCompiler.resolvers !== 'undefined';
 
   if (isWebpack4) {
     childCompiler.hooks.afterCompile.tap(pluginName, (compilation) => {
